@@ -1,43 +1,54 @@
-var createError = require('http-errors');
 var express = require('express');
-var path = require('path');
-var cookieParser = require('cookie-parser');
-var logger = require('morgan');
+var passport = require('passport');
+var BearerStrategy = require("passport-azure-ad").BearerStrategy;
 
-var indexRouter = require('./routes/index');
-var usersRouter = require('./routes/users');
+var options =  {
+  identityMetadata: "https://login.microsoftonline.com/1fc72ce8-044a-4c09-a439-e1de5c187753/v2.0/.well-known/openid-configuration",
+  clientID: "7daf3aab-96d4-4a72-a76f-5ea433bf0707",
+  issuer: "https://sts.windows.net/1fc72ce8-044a-4c09-a439-e1de5c187753/",
+  audience: "http://localhost:30662",
+  loggingLevel: "info",
+  passReqToCallback: false
+};
+
+var bearerStrategy = new BearerStrategy(options, function(token, done) {
+  done(null, {}, token);
+});
+
+console.log(bearerStrategy);
 
 var app = express();
+app.use(require('morgan')('combined'));
+app.use(require('cookie-parser')());
+app.use(require('body-parser').urlencoded({ extended: true }));
+app.use(require('express-session')({ secret: 'keyboard cat', resave: true, saveUninitialized: true }));
+app.use(passport.initialize());
+passport.use(bearerStrategy);
 
-// view engine setup
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'jade');
-
-app.use(logger('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
-
-
-
-app.use('/', indexRouter);
-app.use('/users', usersRouter);
-
-// catch 404 and forward to error handler
+// Enable CORS for * because this is a demo project
 app.use(function(req, res, next) {
-  next(createError(404));
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Authorization, Origin, X-Requested-With, Content-Type, Accept"
+  );
+  next();
 });
 
-// error handler
-app.use(function(err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
+// This is where your API methods are exposed
+app.get(
+  "/api",
+  passport.authenticate("oauth-bearer", { session: false }),
+  function(req, res) {
+    var claims = req.authInfo;
+    console.log("User info: ", req.user);
+    console.log("Validated claims: ", claims);
+    res.status(200).json({ name: claims["name"] });
+  }
+);
 
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
+// Run this
+var port = process.env.PORT || 3000;
+app.listen(port, function() {
+  console.log("Listening on port " + port);
 });
-
-module.exports = app;
